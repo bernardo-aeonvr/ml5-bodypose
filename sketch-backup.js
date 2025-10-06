@@ -1,149 +1,107 @@
+// Variáveis globais
 let video;
 let bodyPose;
 let poses = [];
 let connections;
-let balls = [];
-
-// 🎛️ Configurações fáceis:
-const BALL_RADIUS = 15;
-let BALL_SPEED = 3;
-let BALL_SPAWN_INTERVAL = 120; // em frames
-
-let score = 0;
-let frameCounter = 0;
 
 async function setup() {
+  // Cria o canvas com o tamanho da janela
   createCanvas(windowWidth, windowHeight);
 
+  // Inicia a captura de vídeo
   video = createCapture(VIDEO);
   video.size(width, height);
-  video.hide();
+  video.hide(); // Esconde o elemento de vídeo original para desenharmos no canvas
 
+  // Carrega o modelo bodyPose do ml5.js
   bodyPose = await ml5.bodyPose();
+  // Inicia a detecção de poses no vídeo e define a função de callback
   bodyPose.detectStart(video, gotPoses);
+
+  // Obtém as conexões padrão do esqueleto para desenhar as linhas
   connections = bodyPose.getConnections();
 
-  for (let i = 0; i < 10; i++) {
-    balls.push(createBall());
-  }
-
+  // Configurações de texto (não usadas no momento, mas boas para debug)
   textSize(32);
   textAlign(LEFT, TOP);
   fill(255);
 }
 
 function draw() {
-  background(0);
+  // --- INÍCIO DA CORREÇÃO PARA iOS ---
+
+  // 1. Espelha o canvas para que a imagem funcione como um espelho
+  translate(width, 0); // Move a origem (0,0) para o canto superior direito
+  scale(-1, 1);       // Inverte o eixo horizontal (X)
+
+  // 2. Desenha o frame do vídeo no canvas
+  background(0); // Limpa o fundo
   image(video, 0, 0, width, height);
 
-  // Pontuação
-  fill(255);
-  text("Pontos: " + score, 10, 10);
+  // Variável para checar se o navegador está rodando em um dispositivo Apple
+  // Isso é necessário por causa da forma como o iOS trata a orientação do vídeo
+  const isIOS = /iPhone|iPad|iPod/i.test(navigator.userAgent);
 
-  // Geração de novas bolinhas
-  frameCounter++;
-  if (frameCounter % BALL_SPAWN_INTERVAL === 0) {
-    balls.push(createBall());
-  }
-
-  // Atualiza bolinhas
-  for (let ball of balls) {
-    ball.y += BALL_SPEED;
-
-    if (ball.y > height + ball.r) {
-      resetBall(ball);
-    }
-
-    fill(0, 100, 255);
-    noStroke();
-    circle(ball.x, ball.y, ball.r * 2);
-  }
-
-  // Colisão com esqueleto e keypoints
+  // 3. Itera por todas as poses detectadas
   for (let pose of poses) {
+    // Desenha as linhas de conexão do esqueleto
     for (let conn of connections) {
       let a = pose.keypoints[conn[0]];
       let b = pose.keypoints[conn[1]];
+
+      // Só desenha se a confiança nos dois pontos for alta o suficiente
       if (a.confidence > 0.1 && b.confidence > 0.1) {
+        let a_x = a.x;
+        let a_y = a.y;
+        let b_x = b.x;
+        let b_y = b.y;
+        
+        // Se for iOS, aplica a transformação de coordenadas para corrigir a rotação
+        if (isIOS) {
+          // Mapeia as coordenadas (x,y) que o modelo "vê" (deitado)
+          // para as coordenadas corretas do nosso canvas (em pé).
+          a_x = map(a.y, 0, video.height, 0, width);
+          a_y = map(a.x, 0, video.width, height, 0);
+          
+          b_x = map(b.y, 0, video.height, 0, width);
+          b_y = map(b.x, 0, video.width, height, 0);
+        }
+
+        // Desenha a linha
         stroke(255, 0, 0);
         strokeWeight(2);
-        line(a.x, a.y, b.x, b.y);
-
-        for (let ball of balls) {
-          let d = distToSegment(ball.x, ball.y, a.x, a.y, b.x, b.y);
-          if (d < ball.r) {
-            resetBall(ball);
-            score++;
-          }
-        }
+        line(a_x, a_y, b_x, b_y);
       }
     }
 
+    // Desenha os pontos (keypoints) do esqueleto
     for (let k of pose.keypoints) {
       if (k.confidence > 0.1) {
+        let k_x = k.x;
+        let k_y = k.y;
+
+        // Aplica a mesma transformação de correção para os pontos
+        if (isIOS) {
+          k_x = map(k.y, 0, video.height, 0, width);
+          k_y = map(k.x, 0, video.width, height, 0);
+        }
+        
+        // Desenha o círculo
         fill(0, 255, 0);
         noStroke();
-        circle(k.x, k.y, 10);
-
-        for (let ball of balls) {
-          let d = dist(k.x, k.y, ball.x, ball.y);
-          if (d < ball.r) {
-            resetBall(ball);
-            score++;
-          }
-        }
+        circle(k_x, k_y, 10);
       }
     }
   }
 }
 
+// Função de callback que é chamada quando novas poses são detectadas
 function gotPoses(results) {
   poses = results;
 }
 
-function createBall() {
-  return {
-    x: random(width),
-    y: random(-height, 0),
-    r: BALL_RADIUS
-  };
-}
-
-function resetBall(ball) {
-  ball.x = random(width);
-  ball.y = random(-50, -10);
-}
-
-// Responsividade ao redimensionar a janela
+// Função para redimensionar o canvas e o vídeo quando a janela muda de tamanho
 function windowResized() {
   resizeCanvas(windowWidth, windowHeight);
   video.size(windowWidth, windowHeight);
-}
-
-// Distância de ponto a segmento
-function distToSegment(px, py, x1, y1, x2, y2) {
-  let A = px - x1;
-  let B = py - y1;
-  let C = x2 - x1;
-  let D = y2 - y1;
-
-  let dotProduct = A * C + B * D;
-  let lenSq = C * C + D * D;
-  let param = lenSq !== 0 ? dotProduct / lenSq : -1;
-
-  let xx, yy;
-  if (param < 0) {
-    xx = x1;
-    yy = y1;
-  } else if (param > 1) {
-    xx = x2;
-    yy = y2;
-  } else {
-    xx = x1 + param * C;
-    yy = y1 + param * D;
-  }
-
-  let dx = px - xx;
-  let dy = py - yy;
-  return Math.sqrt(dx * dx + dy * dy);
 }
