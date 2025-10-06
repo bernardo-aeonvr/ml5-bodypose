@@ -15,7 +15,6 @@ async function setup() {
   video.hide();
 
   // Carrega o modelo bodyPose da biblioteca ml5.js
-  // 'await' pausa a execução até que o modelo esteja pronto
   bodyPose = await ml5.bodyPose();
   
   // Inicia a detecção de poses no vídeo. A cada nova detecção, a função 'gotPoses' será chamada.
@@ -26,11 +25,9 @@ async function setup() {
 }
 
 function draw() {
-  // --- INÍCIO DAS CORREÇÕES ---
-
   // 1. ESPELHAMENTO DO CANVAS
   // Move a origem para o canto superior direito e inverte o eixo X.
-  // Isso faz com que a imagem se comporte como um espelho, o que é mais intuitivo para o usuário.
+  // Isso faz com que a imagem se comporte como um espelho.
   translate(width, 0);
   scale(-1, 1);
 
@@ -45,29 +42,29 @@ function draw() {
   // Itera por todas as poses que foram detectadas no frame atual
   for (let pose of poses) {
     
-    // Itera por todas as conexões do esqueleto (ex: ombro esquerdo ao cotovelo esquerdo)
+    // Itera por todas as conexões do esqueleto
     for (let conn of connections) {
-      let a = pose.keypoints[conn[0]]; // Ponto A da conexão
-      let b = pose.keypoints[conn[1]]; // Ponto B da conexão
+      let a = pose.keypoints[conn[0]];
+      let b = pose.keypoints[conn[1]];
 
       // Apenas desenha a linha se o modelo tiver uma boa confiança em ambos os pontos
       if (a.confidence > 0.1 && b.confidence > 0.1) {
         let a_x = a.x, a_y = a.y;
         let b_x = b.x, b_y = b.y;
         
-        // Se for iOS, aplica a transformação de coordenadas para corrigir a rotação e a inversão
+        // Se for iOS, aplica a transformação completa de coordenadas
         if (isIOS) {
-          // Rotaciona o esqueleto em -90 graus mapeando as coordenadas
-          a_x = map(a.y, 0, video.height, 0, width);
-          a_y = map(a.x, 0, video.width, 0, height); // Corrigido de 'height, 0'
+          // <<-- AQUI ESTÁ A CORREÇÃO FINAL! Invertemos o eixo horizontal de '0, width' para 'width, 0'
+          a_x = map(a.y, 0, video.height, width, 0);
+          a_y = map(a.x, 0, video.width, 0, height);
           
-          b_x = map(b.y, 0, video.height, 0, width);
-          b_y = map(b.x, 0, video.width, 0, height); // Corrigido de 'height, 0'
+          b_x = map(b.y, 0, video.height, width, 0);
+          b_y = map(b.x, 0, video.width, 0, height);
         }
 
         // Desenha a linha da conexão
-        stroke(255, 0, 0); // Vermelho
-        strokeWeight(4);   // Um pouco mais grossa para melhor visualização
+        stroke(255, 0, 0);
+        strokeWeight(4);
         line(a_x, a_y, b_x, b_y);
       }
     }
@@ -79,14 +76,14 @@ function draw() {
 
         // Aplica a mesma transformação de correção para os pontos
         if (isIOS) {
-          k_x = map(k.y, 0, video.height, 0, width);
-          k_y = map(k.x, 0, video.width, 0, height); // Corrigido de 'height, 0'
+          k_x = map(k.y, 0, video.height, width, 0);
+          k_y = map(k.x, 0, video.width, 0, height);
         }
         
         // Desenha o círculo do ponto
-        fill(0, 255, 0); // Verde
+        fill(0, 255, 0);
         noStroke();
-        circle(k_x, k_y, 16); // Um pouco maiores
+        circle(k_x, k_y, 16);
       }
     }
   }
@@ -94,7 +91,7 @@ function draw() {
 
 // Função de callback - é executada sempre que o ml5.js detecta novas poses
 function gotPoses(results) {
-  // Armazena os resultados na variável global 'poses' para serem usados na função 'draw'
+  // Armazena os resultados na variável global 'poses'
   poses = results;
 }
 
